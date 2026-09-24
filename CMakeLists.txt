@@ -107,10 +107,8 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 	if(BUILD_TESTING)
 		add_subdirectory(tests)
 	endif()
-endif()
 
-# Install rules
-if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+	# Install rules
 	install(
 		TARGETS pdm
 		EXPORT pdmTargets
