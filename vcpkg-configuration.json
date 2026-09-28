@@ -7,9 +7,11 @@
   "registries": [
     {
       "kind": "git",
-      "repository": "git@github.com:ccpgames/carbon-vcpkg-registry.git",
+      "repository": "https://github.com/carbonengine/vcpkg-registry.git",
       "baseline": "0bad36169696ff6c4bf2d95d52043b8bfe7b85e1",
-      "packages": ["ccp-debug-info"]
+      "packages": [
+        "ccp-debug-info"
+      ]
     }
   ]
 }
