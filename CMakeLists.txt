@@ -18,6 +18,12 @@ set(SRC_FILES
 	src/gatherer.cpp
 	src/output.cpp
 	src/utilities.cpp
+	src/cpu_vm.cpp
+	src/arch/x86_64.cpp
+	src/arch/arm64.cpp
+	src/macos/cpu_macos.cpp
+	src/linux/cpu_linux.cpp
+	src/linux/linux_data.cpp
 	src/wine/wine.cpp
 	src/windows/windows_data.cpp
 	src/windows/d3d_info.cpp
@@ -31,7 +37,8 @@ set(HDR_FILES
 	include/pdm_data.h
 	src/defines.h
 	src/gatherer.h
-	src/cpu_extensions.h
+	src/cpu.h
+	src/platform_cpu.h
 	src/output.h
 	src/windows/d3d_info.h
 )
@@ -64,20 +71,28 @@ if (APPLE)
 	find_library(IOKit IOKit)
 	find_library(AppKit AppKit)
 	find_library(Metal Metal)
+	target_sources(pdmCLI
+		PRIVATE
+			src/macos/macos_data.mm
+	)
 	target_sources(pdm
-		src/macos/macos_data.mm
+		PRIVATE
+			src/macos/macos_data.mm
 	)
 	target_link_libraries(pdmCLI ${IOKit} ${AppKit} ${Metal})
 	target_link_libraries(pdm    ${IOKit} ${AppKit} ${Metal})
-
-	# We don't actually need to go this low (we only support last 3 versions), but nice to get explicit warnings
-	set(CMAKE_OSX_DEPLOYMENT_TARGET "10.9")
 
 	# Silence no symbol warnings
 	SET(CMAKE_C_ARCHIVE_CREATE   "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
 	SET(CMAKE_CXX_ARCHIVE_CREATE "<CMAKE_AR> Scr <TARGET> <LINK_FLAGS> <OBJECTS>")
 	SET(CMAKE_C_ARCHIVE_FINISH   "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
 	SET(CMAKE_CXX_ARCHIVE_FINISH "<CMAKE_RANLIB> -no_warning_for_no_symbols -c <TARGET>")
+endif()
+
+if (UNIX AND NOT APPLE)
+	# Vulkan is loaded at runtime, glibc before 2.34 needs libdl for that
+	target_link_libraries(pdmCLI ${CMAKE_DL_LIBS})
+	target_link_libraries(pdm    ${CMAKE_DL_LIBS})
 endif()
 
 # Set up testing

@@ -45,6 +45,7 @@ namespace PDM
 		WINDOWS,
 		MACOS,
 		WINE,
+		LINUX,
 	};
 
 	enum class StreamingService

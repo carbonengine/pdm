@@ -102,13 +102,50 @@ namespace PDM
 	}
 
 #elif __APPLE__
-
+	std::string UTF8ToNative(const std::string_view utf8String)
+	{
+		return std::string(utf8String);
+	}
+	// macOS implementation of UTF8ToWString is in macos_data.mm
+#elif __linux__
 	std::string UTF8ToNative(const std::string_view utf8String)
 	{
 		return std::string(utf8String);
 	}
 
-	// macOS implementation of UTF8ToWString is in macos_data.mm
-	
+	std::wstring UTF8ToWString(const std::string_view utf8String)
+	{
+		// wchar_t is UTF-32 on Linux, so each code point is one character. Malformed sequences become U+FFFD.
+		std::wstring result;
+		result.reserve(utf8String.size());
+
+		for (size_t i = 0; i < utf8String.size();)
+		{
+			auto lead = static_cast<unsigned char>(utf8String[i]);
+			size_t length = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xe ? 3 : (lead >> 3) == 0x1e ? 4 : 0;
+
+			bool valid = length != 0 && i + length <= utf8String.size();
+			for (size_t j = 1; valid && j < length; j++)
+				valid = (static_cast<unsigned char>(utf8String[i + j]) & 0xc0) == 0x80;
+
+			if (!valid)
+			{
+				result += L'�';
+				i++;
+				continue;
+			}
+
+			char32_t codePoint = length == 1 ? lead : lead & (0x7f >> length);
+			for (size_t j = 1; j < length; j++)
+				codePoint = (codePoint << 6) | (static_cast<unsigned char>(utf8String[i + j]) & 0x3f);
+
+			result += static_cast<wchar_t>(codePoint);
+			i += length;
+		}
+
+		return result;
+	}
+#else
+#error unsupported platform
 #endif
 }

@@ -18,8 +18,10 @@ namespace PDM
 	std::string WStringToUTF8(const std::wstring_view wideString);
 	std::string WStringToNative(const std::wstring_view wideString);
 	std::wstring NativeToWString(const std::string_view str);
-#elif __APPLE__
+#elif __APPLE__ || __linux__
 	std::string GetOSString(const char* name);
 	uint64_t GetOSInteger(const char* name);
+#else
+#error "Unsupported platform"
 #endif
 }
