@@ -22,7 +22,6 @@ set(SRC_FILES
 	src/windows/windows_data.cpp
 	src/windows/d3d_info.cpp
 	src/windows/vulkan_info.cpp
-	src/macos/macos_data.mm
 )
 
 # For IDE support
@@ -65,6 +64,9 @@ if (APPLE)
 	find_library(IOKit IOKit)
 	find_library(AppKit AppKit)
 	find_library(Metal Metal)
+	target_sources(pdm
+		src/macos/macos_data.mm
+	)
 	target_link_libraries(pdmCLI ${IOKit} ${AppKit} ${Metal})
 	target_link_libraries(pdm    ${IOKit} ${AppKit} ${Metal})
 
