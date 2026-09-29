@@ -16,9 +16,10 @@
 
 #endif
 
-#include <vector>
-#include <string>
+#include <cstdint>
 #include <ctime>
+#include <string>
+#include <vector>
 
 namespace PDM
 {
