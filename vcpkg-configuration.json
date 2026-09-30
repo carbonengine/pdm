@@ -1,15 +1,17 @@
 {
   "default-registry": {
     "kind": "git",
-    "baseline": "bea476a80218a581bcb5318595849520217c825e",
+    "baseline": "4cb050be2cfa7a947cdd2dd1a70e24b17774c979",
     "repository": "https://github.com/microsoft/vcpkg.git"
   },
   "registries": [
     {
       "kind": "git",
-      "repository": "git@github.com:ccpgames/carbon-vcpkg-registry.git",
-      "baseline": "0bad36169696ff6c4bf2d95d52043b8bfe7b85e1",
-      "packages": ["ccp-debug-info"]
+      "baseline": "7b2c2b56dc4d5e0f1f4886539f570e2d94b2b46c",
+      "repository": "https://github.com/carbonengine/vcpkg-registry",
+      "packages": [
+        "ccp-debug-info"
+      ]
     }
   ]
 }
