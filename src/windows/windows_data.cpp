@@ -184,43 +184,144 @@ namespace PDM
 		return IsWine() ? OS::WINE : OS::WINDOWS;
 	}
 
+	// One cached Win32_OperatingSystem query feeds the whole OS block below. WMI reports the
+	// true current OS, whereas several CurrentVersion registry values are frozen legacy strings
+	// (ProductName stays "Windows 10 ..." and CurrentVersion stays "6.3" on Windows 10/11). The
+	// query runs at most once (static cache); every getter falls back to the registry when WMI
+	// is unavailable.
+	struct Win32OsInfo
+	{
+		std::string caption;     // e.g. "Microsoft Windows 11 Pro"
+		std::string version;     // e.g. "10.0.26200" (major.minor.build)
+		std::string buildNumber; // e.g. "26200"
+	};
+
+	Win32OsInfo QueryWin32OsInfo()
+	{
+		Win32OsInfo info;
+		if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return info;
+		SCOPE_EXIT(CoUninitialize());
+
+		// CoInitializeSecurity is process-wide and may already be set by another PDM WMI
+		// query (e.g. GetHardDriveInfo); treat "already set" as success.
+		const HRESULT hrSec = CoInitializeSecurity(nullptr, -1, nullptr, nullptr, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE, nullptr);
+		if (FAILED(hrSec) && hrSec != RPC_E_TOO_LATE) return info;
+
+		IWbemLocator* pLoc = nullptr;
+		if (FAILED(CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, reinterpret_cast<LPVOID*>(&pLoc)))) return info;
+		SCOPE_EXIT(pLoc->Release());
+
+		IWbemServices* pSvc = nullptr;
+		if (FAILED(pLoc->ConnectServer(bstr_t(L"ROOT\\CIMV2"), nullptr, nullptr, nullptr, 0, nullptr, nullptr, &pSvc))) return info;
+		SCOPE_EXIT(pSvc->Release());
+
+		if (FAILED(CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE))) return info;
+
+		IEnumWbemClassObject* pEnumerator = nullptr;
+		if (FAILED(pSvc->ExecQuery(bstr_t("WQL"), bstr_t("SELECT Caption,Version,BuildNumber FROM Win32_OperatingSystem"), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, nullptr, &pEnumerator))) return info;
+		SCOPE_EXIT(pEnumerator->Release());
+
+		IWbemClassObject* pclsObj = nullptr;
+		ULONG ret = 0;
+		if (FAILED(pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &ret)) || !ret) return info;
+		SCOPE_EXIT(pclsObj->Release());
+
+		auto getStr = [&pclsObj](const wchar_t* name)
+		{
+			VARIANT vtProp{};
+			std::string out;
+			if (SUCCEEDED(pclsObj->Get(name, 0, &vtProp, nullptr, nullptr)) && vtProp.vt == VT_BSTR && vtProp.bstrVal)
+				out = WStringToUTF8(vtProp.bstrVal);
+			VariantClear(&vtProp);
+			return out;
+		};
+
+		info.caption     = getStr(L"Caption");
+		info.version     = getStr(L"Version");
+		info.buildNumber = getStr(L"BuildNumber");
+		return info;
+	}
+
+	const Win32OsInfo& GetWin32OsInfo()
+	{
+		static const Win32OsInfo info = IsWine() ? Win32OsInfo{} : QueryWin32OsInfo();
+		return info;
+	}
+
+	// Returns the dotted component at 'index' of a "major.minor.build" string, or "" if absent.
+	std::string VersionComponent(const std::string& version, size_t index)
+	{
+		size_t start = 0;
+		for (size_t i = 0; i < index; ++i)
+		{
+			const size_t dot = version.find('.', start);
+			if (dot == std::string::npos) return "";
+			start = dot + 1;
+		}
+		const size_t end = version.find('.', start);
+		return version.substr(start, end == std::string::npos ? std::string::npos : end - start);
+	}
+
 	std::string GetOSName()
 	{
-		return IsWine() ? "" : GetStringFromReg(CURRENT_VERSION_KEY, L"ProductName");
+		if (IsWine()) return "";
+
+		// Prefer WMI's Win32_OperatingSystem.Caption: it reports the true current OS. The
+		// ProductName registry value stays "Windows 10 ..." on Windows 11, so reading it
+		// directly mislabels the OS. Strip the "Microsoft " prefix to keep the prior format.
+		std::string name = GetWin32OsInfo().caption;
+		const std::string kMicrosoftPrefix = "Microsoft ";
+		if (name.rfind(kMicrosoftPrefix, 0) == 0)
+			name.erase(0, kMicrosoftPrefix.size());
+		if (!name.empty())
+			return name;
+
+		// Fallback when WMI is unavailable: registry ProductName, corrected for the Windows 11
+		// build range (>= 22000) where ProductName still reads "Windows 10 ...".
+		name = GetStringFromReg(CURRENT_VERSION_KEY, L"ProductName");
+		if (std::atoll(GetOSBuildNumber().c_str()) >= 22000)
+		{
+			const auto pos = name.find("Windows 10");
+			if (pos != std::string::npos)
+				name.replace(pos, 10, "Windows 11");
+		}
+		return name;
 	}
 
 	std::string GetOSMajorVersion()
 	{
 		if (IsWine()) return "";
-		std::string version = GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentMajorVersionNumber");
-		if (!version.empty()) return version;
-
-		version = GetOSKernelVersion();
-		if (version.find('.') != -1) return version.substr(0, version.find('.'));
-
-		return "";
+		std::string major = VersionComponent(GetWin32OsInfo().version, 0);
+		if (!major.empty()) return major;
+		return GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentMajorVersionNumber");
 	}
 
 	std::string GetOSMinorVersion()
 	{
 		if (IsWine()) return "";
-		std::string version = GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentMinorVersionNumber");
-		if (!version.empty()) return version;
-
-		version = GetOSKernelVersion();
-		if (version.find('.') != -1) return version.substr(version.find('.') + 1);
-
-		return "";
+		std::string minor = VersionComponent(GetWin32OsInfo().version, 1);
+		if (!minor.empty()) return minor;
+		return GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentMinorVersionNumber");
 	}
 
 	std::string GetOSBuildNumber()
 	{
-		return IsWine() ? "" : GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentBuild");
+		if (IsWine()) return "";
+		const std::string& build = GetWin32OsInfo().buildNumber;
+		if (!build.empty()) return build;
+		return GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentBuild");
 	}
 
 	std::string GetOSKernelVersion()
 	{
-		return IsWine() ? "" : GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentVersion");
+		if (IsWine()) return "";
+		// NT major.minor of the true version (e.g. "10.0"); the CurrentVersion registry value is
+		// frozen at "6.3" on Windows 10/11.
+		const std::string& version = GetWin32OsInfo().version;
+		const std::string major = VersionComponent(version, 0);
+		const std::string minor = VersionComponent(version, 1);
+		if (!major.empty() && !minor.empty()) return major + "." + minor;
+		return GetStringFromReg(CURRENT_VERSION_KEY, L"CurrentVersion");
 	}
 
 	std::string GetHardwareModel()
