@@ -4,7 +4,19 @@ Platform Detection Module (PDM) is an OS agnostic library for gathering metrics 
 
 ## Building
 
+The project can be built using the normal CMake flow:
 
+```shell
+> cmake -DCMAKE_BUILD_TYPE=Release --preset arm64-linux-release -S /path/to/pdm/sources -B /path/to/build/folder
+> cmake --build /path/to/build/folder --target all
+```
+
+There are a variety of presets available, you can list ones available for your current platform using:
+```shell
+> cmake --list-presets
+```
+
+Alternately, look at `CMakePresets.json` to see an overview of presets for all platform
 
 ## 🤝 Contributing
 Contribution follows the standard GIT PR model.
