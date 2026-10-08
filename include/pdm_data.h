@@ -16,9 +16,10 @@
 
 #endif
 
-#include <vector>
-#include <string>
+#include <cstdint>
 #include <ctime>
+#include <string>
+#include <vector>
 
 namespace PDM
 {
@@ -44,6 +45,7 @@ namespace PDM
 		WINDOWS,
 		MACOS,
 		WINE,
+		LINUX,
 	};
 
 	enum class StreamingService
