@@ -138,6 +138,7 @@ class CarbonBuildLinux(buildName: String, configType: String, preset: String, ag
         }
         runInDocker {
             dockerImage = "906334554726.dkr.ecr.eu-west-1.amazonaws.com/carbon-linux-gcc:0"
+            dockerRunParameters = "--user=1001:1001"
         }
         pullRequests {
             vcsRootExtId = "${DslContext.settingsRootId.id}"
