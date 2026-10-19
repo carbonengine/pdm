@@ -2,9 +2,9 @@
 
 #if __x86_64__ || _M_X64
 
-#include "../cpu.h"
-#include "../defines.h"
-#include "../../include/pdm.h"
+#include <cpu.h>
+#include <defines.h>
+#include <pdm.h>
 
 #include <bitset>
 #include <string>

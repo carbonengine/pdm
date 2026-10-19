@@ -67,6 +67,12 @@ add_executable(pdmCLI
 	src/main.cpp
 )
 
+target_include_directories(pdmCLI
+	PRIVATE
+		${CMAKE_CURRENT_SOURCE_DIR}/include
+		${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 if (APPLE)
 	find_library(IOKit IOKit)
 	find_library(AppKit AppKit)

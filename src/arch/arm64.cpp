@@ -2,9 +2,9 @@
 
 #if __aarch64__
 
-#include "../cpu.h"
-#include "../platform_cpu.h"
-#include "../../include/pdm.h"
+#include <cpu.h>
+#include <platform_cpu.h>
+#include <pdm.h>
 
 namespace PDM
 {
