@@ -5,11 +5,12 @@
 #include "utilities.h"
 #include "../include/pdm.h"
 #include "../include/version.h"
-#include "cpu_extensions.h"
+#include "cpu.h"
 
 #include <string>
 #include <ctime>
 #include <optional>
+#include <thread>
 
 namespace PDM
 {
@@ -34,28 +35,6 @@ namespace PDM
 		uint32_t frequency = GetCPUFrequency();
 
 		return { model, stepping, vendor, brand, bitness, logicalCoreCount, architecture, extensions, frequency };
-	}
-
-	bool HasVMExecutionTiming()
-	{
-		static bool _finished, _ret;
-		if (_finished) return _ret;
-		_finished = true;
-
-		// Average time on a modern processor natively is around 25 cycles
-		// Time on paravirtualized VM is over 5000 cycles
-		const unsigned THRESHOLD_CYCLES = 100;
-		const unsigned RUNS = 1024;
-
-		volatile unsigned thresholdCrossings = 0;
-		
-		for (volatile unsigned i = 0; i < RUNS; i++)
-		{
-			if (GetTimingCycles() > THRESHOLD_CYCLES) thresholdCrossings++;
-		}
-
-		_ret = thresholdCrossings > (RUNS / 2);
-		return _ret;
 	}
 
 	Bitness GetProcessBitness()
@@ -168,6 +147,8 @@ namespace PDM
 			return "macOS";
 		case OS::WINE:
 			return "Wine";
+		case OS::LINUX:
+			return "Linux";
 		case OS::UNKNOWN:
 		default:
 			return "UNKNOWN";
