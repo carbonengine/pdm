@@ -126,7 +126,8 @@ namespace PDM
     uint32_t GetAppleSiliconCPUFrequency()
     {
         io_iterator_t iterator;
-        if ( IOServiceGetMatchingServices( kIOMasterPortDefault, IOServiceMatching( "AppleARMIODevice" ), &iterator ) != kIOReturnSuccess ) {
+        if ( IOServiceGetMatchingServices( kIOMasterPortDefault, IOServiceMatching( "AppleARMIODevice" ), &iterator ) != kIOReturnSuccess )
+        {
             return 0;
         }
         SCOPE_EXIT( IOObjectRelease( iterator ) );
@@ -136,39 +137,51 @@ namespace PDM
 
         while ( ( regEntry = IOIteratorNext( iterator ) ) )
         {
-            SCOPE_EXIT(IOObjectRelease(regEntry));
+            SCOPE_EXIT( IOObjectRelease( regEntry ) );
 
             // The power manager lists the frequency steps of each CPU core cluster
             io_name_t name;
-            if (IORegistryEntryGetName(regEntry, name) != kIOReturnSuccess || strcmp(name, "pmgr") != 0) continue;
+            if ( IORegistryEntryGetName( regEntry, name ) != kIOReturnSuccess || strcmp( name, "pmgr" ) != 0 )
+            {
+                continue;
+            }
 
             // voltage-states1-sram holds the efficiency cores, voltage-states5-sram the performance cores,
             // and M5 Max chips add a core cluster type in voltage-states22-sram and voltage-states23-sram
             for ( auto key : { CFSTR("voltage-states1-sram"), CFSTR("voltage-states5-sram"), CFSTR("voltage-states22-sram"), CFSTR("voltage-states23-sram") } )
             {
-                auto data = static_cast<CFDataRef>(IORegistryEntryCreateCFProperty(regEntry, key, kCFAllocatorDefault, 0));
-                if (!data) continue;
-                SCOPE_EXIT(CFRelease(data));
-                if (CFGetTypeID(data) != CFDataGetTypeID()) continue;
+                auto data = static_cast<CFDataRef>( IORegistryEntryCreateCFProperty( regEntry, key, kCFAllocatorDefault, 0 ) );
+                if ( !data )
+                {
+                    continue;
+                }
+                SCOPE_EXIT( CFRelease( data ) );
+                if ( CFGetTypeID( data ) != CFDataGetTypeID() )
+                {
+                    continue;
+                }
 
                 // Each entry is a pair of little endian uint32 values: frequency and voltage (mV)
                 uint64_t clusterMaxFrequency = 0;
-                auto bytes = CFDataGetBytePtr(data);
-                for (CFIndex i = 0; i + 8 <= CFDataGetLength(data); i += 8)
+                auto bytes = CFDataGetBytePtr( data );
+                for ( CFIndex i = 0; i + 8 <= CFDataGetLength(data); i += 8 )
                 {
                     uint32_t frequency;
-                    memcpy(&frequency, bytes + i, sizeof(frequency));
-                    clusterMaxFrequency = std::max<uint64_t>(clusterMaxFrequency, CFSwapInt32LittleToHost(frequency));
+                    memcpy( &frequency, bytes + i, sizeof( frequency ) );
+                    clusterMaxFrequency = std::max<uint64_t>( clusterMaxFrequency, CFSwapInt32LittleToHost( frequency ) );
                 }
 
                 // The frequency is in Hz on M1-M3, but in kHz from M4 onwards
-                if (clusterMaxFrequency < 100'000'000) clusterMaxFrequency *= 1000;
-                maxFrequency = std::max(maxFrequency, clusterMaxFrequency);
+                if ( clusterMaxFrequency < 100'000'000 )
+                {
+                    clusterMaxFrequency *= 1000;
+                }
+                maxFrequency = std::max( maxFrequency, clusterMaxFrequency );
             }
             break;
         }
 
-        return static_cast<uint32_t>(maxFrequency / 1000 / 1000);
+        return static_cast<uint32_t>( maxFrequency / 1000 / 1000 );
     }
 
     uint32_t GetCPUFrequency()
@@ -180,14 +193,20 @@ namespace PDM
 #else
         #error "Unsupported architecture"
 #endif
-        if (appleSilicon)
+        if ( appleSilicon )
         {
-            if (auto frequency = GetAppleSiliconCPUFrequency(); frequency > 0) return frequency;
+            if ( auto frequency = GetAppleSiliconCPUFrequency(); frequency > 0 )
+            {
+                return frequency;
+            }
         }
 
-        auto parts = split(exec("sysctl hw.cpufrequency_max"), ": ");
-        if(parts.size() != 2) return 0;
-        return std::atoll(parts[1].c_str()) / 1000 / 1000;
+        auto parts = split( exec( "sysctl hw.cpufrequency_max" ), ": " );
+        if ( parts.size() != 2 )
+        {
+            return 0;
+        }
+        return std::atoll( parts[1].c_str() ) / 1000 / 1000;
     }
 
     OS GetOSType()
