@@ -105,12 +105,11 @@ endif()
 if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
 	option(BUILD_TESTING "Build and run tests. Enabled by default." ON)
 	if(BUILD_TESTING)
+		enable_testing()
 		add_subdirectory(tests)
 	endif()
-endif()
 
-# Install rules
-if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME)
+	# Install rules
 	install(
 		TARGETS pdm
 		EXPORT pdmTargets
