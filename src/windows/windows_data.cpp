@@ -85,55 +85,95 @@ namespace PDM
 #endif
 	}
 
+	// Runs a WQL query against the given WMI namespace, invoking the callback for every returned object.
+	// Returns false if WMI could not be queried at all.
+	template <typename Callback>
+	bool QueryWMI( const wchar_t* wmiNamespace, const wchar_t* query, Callback&& callback )
+	{
+		// RPC_E_CHANGED_MODE means COM is already initialized on this thread with a different
+		// concurrency model, which is fine for our purposes, but we must not uninitialize it.
+		HRESULT hr = CoInitializeEx( nullptr, COINIT_MULTITHREADED );
+		if( FAILED( hr ) && hr != RPC_E_CHANGED_MODE )
+		{
+			return false;
+		}
+		SCOPE_EXIT( if( SUCCEEDED( hr ) ) CoUninitialize() );
+
+		// RPC_E_TOO_LATE means security has already been initialized for this process
+		HRESULT secHr = CoInitializeSecurity( nullptr, -1, nullptr, nullptr, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE, nullptr );
+		if( FAILED( secHr ) && secHr != RPC_E_TOO_LATE )
+		{
+			return false;
+		}
+
+		CComPtr<IWbemLocator> pLoc;
+		if( FAILED( CoCreateInstance( CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, reinterpret_cast<LPVOID*>( &pLoc ) ) ) )
+		{
+			return false;
+		}
+
+		CComPtr<IWbemServices> pSvc;
+		if( FAILED( pLoc->ConnectServer( bstr_t( wmiNamespace ), nullptr, nullptr, nullptr, NULL, nullptr, nullptr, &pSvc ) ) )
+		{
+			return false;
+		}
+
+		if( FAILED( CoSetProxyBlanket( pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE ) ) )
+		{
+			return false;
+		}
+
+		CComPtr<IEnumWbemClassObject> pEnumerator;
+		if( FAILED( pSvc->ExecQuery( bstr_t( "WQL" ), bstr_t( query ), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, nullptr, &pEnumerator ) ) )
+		{
+			return false;
+		}
+
+		while( pEnumerator )
+		{
+			CComPtr<IWbemClassObject> pclsObj;
+			ULONG ret = 0;
+			if( FAILED( pEnumerator->Next( WBEM_INFINITE, 1, &pclsObj, &ret ) ) || !ret )
+			{
+				break;
+			}
+			callback( *pclsObj );
+		}
+
+		return true;
+	}
+
+	std::string GetWMIString( IWbemClassObject& obj, const wchar_t* name )
+	{
+		VARIANT vtProp{};
+		if( FAILED( obj.Get( name, 0, &vtProp, nullptr, nullptr ) ) )
+		{
+			return "";
+		}
+		auto str = vtProp.vt == VT_BSTR && vtProp.bstrVal ? WStringToUTF8( vtProp.bstrVal ) : "";
+		VariantClear( &vtProp );
+		return str;
+	}
+
+	long GetWMILong( IWbemClassObject& obj, const wchar_t* name )
+	{
+		VARIANT vtProp{};
+		if( FAILED( obj.Get( name, 0, &vtProp, nullptr, nullptr ) ) )
+		{
+			return 0l;
+		}
+		auto lval = vtProp.lVal;
+		VariantClear( &vtProp );
+		return lval;
+	}
+
 	std::vector<HardDriveInfo> GetHardDriveInfo()
 	{
-		if (FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return {};
-		SCOPE_EXIT(CoUninitialize());
-
-		if (FAILED(CoInitializeSecurity(nullptr, -1, nullptr, nullptr, RPC_C_AUTHN_LEVEL_DEFAULT, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE, nullptr))) return {};
-
-		IWbemLocator* pLoc = nullptr;
-		if (FAILED(CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, reinterpret_cast<LPVOID*>(&pLoc)))) return {};
-
-		IWbemServices* pSvc = nullptr;
-		if (FAILED(pLoc->ConnectServer(bstr_t(L"root\\Microsoft\\Windows\\Storage"), nullptr, nullptr, nullptr, NULL, nullptr, nullptr, &pSvc))) return {};
-		SCOPE_EXIT(pLoc->Release());
-
-		if (FAILED(CoSetProxyBlanket(pSvc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE))) return {};
-		SCOPE_EXIT(pSvc->Release());
-
-		IEnumWbemClassObject* pEnumerator = nullptr;
-		if (FAILED(pSvc->ExecQuery(bstr_t("WQL"), bstr_t("SELECT * FROM MSFT_PhysicalDisk"), WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, nullptr, &pEnumerator))) return {};
-
-		IWbemClassObject* pclsObj = nullptr;
 		std::vector<HardDriveInfo> drives;
-		while (pEnumerator)
-		{
-			ULONG ret = 0;
-			if (FAILED(pEnumerator->Next(WBEM_INFINITE, 1, &pclsObj, &ret)) || !ret) break;
-			SCOPE_EXIT(pclsObj->Release());
-
-			auto vtStr = [](IWbemClassObject& obj, const wchar_t* name)
-			{
-				VARIANT vtProp{};
-				if (FAILED(obj.Get(name, 0, &vtProp, nullptr, nullptr))) return std::string();
-				auto str = std::string(WStringToUTF8(vtProp.bstrVal));
-				VariantClear(&vtProp);
-				return str;
-			};
-
-			auto vtLong = [](IWbemClassObject& obj, const wchar_t* name)
-			{
-				VARIANT vtProp{};
-				if (FAILED(obj.Get(name, 0, &vtProp, nullptr, nullptr))) return 0l;
-				auto lval = vtProp.lVal;
-				VariantClear(&vtProp);
-				return lval;
-			};
-
-			std::string name = vtStr(*pclsObj, L"FriendlyName");
-			long mediaType = vtLong(*pclsObj, L"MediaType");
-			std::string sizeStr = vtStr(*pclsObj, L"Size");
+		QueryWMI( L"root\\Microsoft\\Windows\\Storage", L"SELECT * FROM MSFT_PhysicalDisk", [&]( IWbemClassObject& obj ) {
+			std::string name = GetWMIString(obj, L"FriendlyName");
+			long mediaType = GetWMILong(obj, L"MediaType");
+			std::string sizeStr = GetWMIString(obj, L"Size");
 
 			HardDriveInfo::HardDriveType type = HardDriveInfo::HardDriveType::UNKNOWN;
 			switch (mediaType)
@@ -146,12 +186,12 @@ namespace PDM
 				break;
 			default:
 				// We don't care about USB sticks and such
-				continue;
+				return;
 			}
 			uint64_t size = std::atoll(sizeStr.c_str());
 
 			drives.push_back({name, type, size});
-		}
+		});
 
 		return drives;
 	}
@@ -186,7 +226,29 @@ namespace PDM
 
 	std::string GetOSName()
 	{
-		return IsWine() ? "" : GetStringFromReg(CURRENT_VERSION_KEY, L"ProductName");
+		if( IsWine() )
+		{
+			return "";
+		}
+
+		// The registry ProductName reports "Windows 10" even on Windows 11, so prefer WMI
+		std::string name;
+		QueryWMI( L"root\\CIMV2", L"SELECT Caption FROM Win32_OperatingSystem", [&]( IWbemClassObject& obj ) {
+			if( name.empty() )
+			{
+				name = GetWMIString( obj, L"Caption" );
+			}
+		} );
+
+		// Match the registry format, e.g. "Microsoft Windows 11 Pro " -> "Windows 11 Pro"
+		const std::string prefix = "Microsoft ";
+		if( name.rfind( prefix, 0 ) == 0 )
+		{
+			name = name.substr( prefix.size() );
+		}
+		name.erase( name.find_last_not_of( " \t" ) + 1 );
+
+		return name.empty() ? GetStringFromReg( CURRENT_VERSION_KEY, L"ProductName" ) : name;
 	}
 
 	std::string GetOSMajorVersion()
